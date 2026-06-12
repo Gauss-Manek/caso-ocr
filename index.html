@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Superviseur OCR Pro - Cadastre & Urbanisme</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen font-sans">
+
+    <div id="sectionConnexion" class="flex items-center justify-center min-h-screen hidden">
+        <div class="bg-white p-8 rounded-xl border border-slate-200 shadow-lg w-full max-w-md">
+            <div class="text-center mb-6">
+                <h2 class="text-2xl font-bold text-slate-900">Portail Cadastral</h2>
+                <p class="text-slate-500 text-sm mt-1">Connectez-vous pour gérer les fiches OCR</p>
+            </div>
+            <form id="formLogin" onsubmit="executerConnexion(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Nom d'utilisateur :</label>
+                    <input type="text" id="usernameInput" required class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Mot de passe :</label>
+                    <input type="password" id="passwordInput" required class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                </div>
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm shadow-sm transition-all">
+                    Se connecter
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div id="sectionApplication" class="max-w-6xl mx-auto px-4 py-8 hidden">
+        
+        <div class="bg-slate-900 rounded-xl p-6 text-white shadow-md mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight">Certificat d'Affichage Sans Opposition(CASO)</h1>
+                <p class="text-slate-400 text-sm mt-1">Module de supervision et de qualification OCR</p>
+            </div>
+            <div class="flex items-center gap-3 bg-slate-800 px-4 py-2 rounded-lg border border-slate-700">
+                <div class="text-right">
+                    <div id="labelOperateur" class="text-sm font-bold text-slate-200">Session active</div>
+                    <div id="labelRole" class="text-xs text-amber-400 font-mono">Chargement...</div>
+                </div>
+                <button onclick="executerDeconnexion()" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-all">
+                    Déconnexion
+                </button>
+            </div>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm mb-6">
+            <h3 class="text-lg font-bold text-slate-900 mb-3">1. Injection de Fichiers PDF en Lot</h3>
+            <input type="file" id="fichiersMultiples" multiple accept=".pdf,.png,.jpg,.jpeg" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
+            <button onclick="traiterDocumentsLots()" class="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-5 rounded-lg text-sm shadow-sm transition-all">
+                Analyser 
+            </button>
+        </div>
+
+        <h3 class="text-xl font-bold text-slate-900 mb-4">2. Formulaires d'Entrée Initiale (Données Détectées)</h3>
+        <div id="espaceCorrection" class="space-y-4 mb-8"></div>
+
+        <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-4 mb-4 gap-2">
+                <h3 class="text-lg font-bold text-slate-900">3. Registre de la Base de Données Distante (<code class="text-sm bg-slate-100 px-1 py-0.5 rounded text-blue-600 font-mono">caso_data</code>)</h3>
+                <button onclick="chargerDonneesBase()" class="bg-slate-600 hover:bg-slate-700 text-white font-medium py-1.5 px-4 rounded-lg text-xs transition-all self-start">
+                    Rafraîchir les Lignes
+                </button>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left text-slate-600 border-collapse">
+                    <thead class="text-xs text-slate-700 uppercase bg-slate-100">
+                        <tr>
+                            <th class="p-3 border-b border-slate-200">ID</th>
+                            <th class="p-3 border-b border-slate-200">Fichier Source (PDF)</th>
+                            <th class="p-3 border-b border-slate-200">N° CASO</th>
+                            <th class="p-3 border-b border-slate-200">Parcelle</th>
+                            <th class="p-3 border-b border-slate-200">Section</th>
+                            <th class="p-3 border-b border-slate-200">Commune</th>
+                            <th class="p-3 border-b border-slate-200">Requérant</th>
+                            <th class="p-3 border-b border-slate-200 text-center">Actions Admin</th>
+                        </tr>
+                    </thead>
+                    <tbody id="corpsTableauDB" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // CONFIGURATION DU LIEN DIRECT AVEC L'API
+        const API_BACKEND_IP = "127.0.0.1";
+        const API_BACKEND_PORT = "8000";
+        const API_DISTANTE_URL = `http://${API_BACKEND_IP}:${API_BACKEND_PORT}`;
+
+        window.onload = function() {
+            verifierSession();
+        };
+
+        function verifierSession() {
+            const user = localStorage.getItem("username");
+            const role = localStorage.getItem("role");
+
+            if (user && role) {
+                document.getElementById("sectionConnexion").classList.add("hidden");
+                document.getElementById("sectionApplication").classList.remove("hidden");
+                document.getElementById("labelOperateur").innerText = user;
+                document.getElementById("labelRole").innerText = `Rôle : ${role.toUpperCase()}`;
+                chargerDonneesBase();
+            } else {
+                document.getElementById("sectionApplication").classList.add("hidden");
+                document.getElementById("sectionConnexion").classList.remove("hidden");
+            }
+        }
+
+        async function executerConnexion(event) {
+            event.preventDefault();
+            const username = document.getElementById("usernameInput").value;
+            const password = document.getElementById("passwordInput").value;
+            try {
+                const response = await fetch(`${API_DISTANTE_URL}/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    localStorage.setItem("username", data.username);
+                    localStorage.setItem("role", data.role);
+                    document.getElementById("formLogin").reset();
+                    verifierSession();
+                } else {
+                    const err = await response.json();
+                    alert("Échec de l'authentification : " + err.detail);
+                }
+            } catch (error) {
+                alert("Erreur réseau : Impossible de contacter l'API Backend.");
+            }
+        }
+
+        function executerDeconnexion() {
+            localStorage.clear();
+            verifierSession();
+        }
+
+        async function traiterDocumentsLots() {
+            const input = document.getElementById('fichiersMultiples');
+            const user = localStorage.getItem("username");
+            if(input.files.length === 0) return alert("Sélectionnez au moins un document.");
+
+            const formData = new FormData();
+            for (let i = 0; i < input.files.length; i++) {
+                formData.append("files", input.files[i]);
+            }
+            formData.append("current_user", user);
+            try {
+                const response = await fetch(`${API_DISTANTE_URL}/upload-multiple/`, { method: 'POST', body: formData });
+                const data = await response.json();
+                construireInterfaceCorrection(data.documents);
+            } catch (error) {
+                alert("Erreur réseau lors de l'envoi vers l'OCR.");
+            }
+        }
+
+        function construireInterfaceCorrection(documents) {
+            const conteneur = document.getElementById('espaceCorrection');
+            conteneur.innerHTML = "";
+
+            documents.forEach(doc => {
+                const div = document.createElement('div');
+                div.className = "bg-white border border-slate-200 rounded-xl p-6 shadow-sm";
+                div.innerHTML = `
+                    <h4 class="font-bold text-slate-900 mb-2">Analyse du fichier : <span class="text-blue-600">${doc.filename}</span></h4>
+                    <div class="bg-slate-100 border-l-4 border-amber-500 p-3 text-xs text-slate-600 mb-4 rounded-r-lg font-mono max-h-40 overflow-y-auto">
+                        <strong class="text-slate-800">Brut OCR :</strong> ${doc.raw_text}
+                    </div>
+                    <form id="form-${doc.id}" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <input type="hidden" name="document_id" value="${doc.id}">
+                        <div><label class="block text-xs font-medium text-slate-500 mb-1">1. N° CASO :</label><input type="text" name="num_caso" value="${doc.extracted_data.num_caso}" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"></div>
+                        <div><label class="block text-xs font-medium text-slate-500 mb-1">2. Parcelle :</label><input type="text" name="parcelle" value="${doc.extracted_data.parcelle}" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"></div>
+                        <div><label class="block text-xs font-medium text-slate-500 mb-1">3. Section :</label><input type="text" name="section" value="${doc.extracted_data.section}" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"></div>
+                        <div><label class="block text-xs font-medium text-slate-500 mb-1">4. Commune :</label><input type="text" name="commune" value="${doc.extracted_data.commune}" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"></div>
+                        <div><label class="block text-xs font-medium text-slate-500 mb-1">5. Date Début :</label><input type="text" name="date_debut" value="${doc.extracted_data.date_debut}" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"></div>
+                        <div><label class="block text-xs font-medium text-slate-500 mb-1">6. Date Fin :</label><input type="text" name="date_fin" value="${doc.extracted_data.date_fin}" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"></div>
+                        <div class="md:col-span-2"><label class="block text-xs font-medium text-slate-500 mb-1">7. Requérant :</label><input type="text" name="requerant" value="${doc.extracted_data.requerant}" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-1 focus:ring-blue-500 focus:outline-none"></div>
+                    </form>
+                    <button onclick="validerEtPousserEnDB('${doc.id}')" class="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-4 rounded-lg text-sm shadow-sm transition-all">Valider l'exactitude & Intégrer en Base</button>
+                `;
+                conteneur.appendChild(div);
+            });
+        }
+
+        async function validerEtPousserEnDB(id) {
+            const form = document.getElementById(`form-${id}`);
+            const user = localStorage.getItem("username");
+            const payload = Object.fromEntries(new FormData(form).entries());
+
+            const formDataPayload = new FormData();
+            formDataPayload.append("document_id", payload.document_id);
+            formDataPayload.append("num_caso", payload.num_caso);
+            formDataPayload.append("parcelle", payload.parcelle);
+            formDataPayload.append("section", payload.section);
+            formDataPayload.append("commune", payload.commune);
+            formDataPayload.append("date_debut", payload.date_debut);
+            formDataPayload.append("date_fin", payload.date_fin);
+            formDataPayload.append("requerant", payload.requerant);
+            formDataPayload.append("current_user", user);
+
+            try {
+                const response = await fetch(`${API_DISTANTE_URL}/valider-caso/`, { method: 'POST', body: formDataPayload });
+                const res = await response.json();
+                alert(res.message);
+                form.parentElement.remove();
+                chargerDonneesBase();
+            } catch (error) {
+                alert("Erreur lors de l'intégration SQL.");
+            }
+        }
+
+        async function chargerDonneesBase() {
+            try {
+                const response = await fetch(`${API_DISTANTE_URL}/caso/`);
+                const records = await response.json();
+                const tbody = document.getElementById('corpsTableauDB');
+                tbody.innerHTML = "";
+
+                records.forEach(row => {
+                    const tr = document.createElement('tr');
+                    tr.className = "hover:bg-slate-50 transition-colors";
+                    tr.innerHTML = `
+                        <td class="p-3 border-b border-slate-200 font-medium">${row.id}</td>
+                        <td class="p-3 border-b border-slate-200">
+                            <a class="text-blue-600 font-semibold hover:underline inline-flex items-center gap-1" href="${row.filepath}" target="_blank">
+                                📄 ${row.filename}
+                            </a>
+                        </td>
+                        <td class="p-3 border-b border-slate-200"><input type="text" id="db-num-${row.id}" value="${row.num_caso}" class="border border-slate-300 rounded px-2 py-1 text-xs w-full bg-slate-50 focus:bg-white focus:outline-none"></td>
+                        <td class="p-3 border-b border-slate-200"><input type="text" id="db-parcelle-${row.id}" value="${row.parcelle}" class="border border-slate-300 rounded px-2 py-1 text-xs w-full bg-slate-50 focus:bg-white focus:outline-none"></td>
+                        <td class="p-3 border-b border-slate-200"><input type="text" id="db-section-${row.id}" value="${row.section}" class="border border-slate-300 rounded px-2 py-1 text-xs w-full bg-slate-50 focus:bg-white focus:outline-none"></td>
+                        <td class="p-3 border-b border-slate-200"><input type="text" id="db-commune-${row.id}" value="${row.commune}" class="border border-slate-300 rounded px-2 py-1 text-xs w-full bg-slate-50 focus:bg-white focus:outline-none"></td>
+                        <td class="p-3 border-b border-slate-200"><input type="text" id="db-req-${row.id}" value="${row.requerant}" class="border border-slate-300 rounded px-2 py-1 text-xs w-full bg-slate-50 focus:bg-white focus:outline-none"></td>
+                        <td class="p-3 border-b border-slate-200 text-center whitespace-nowrap text-xs font-semibold">
+                            <button class="bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1 rounded mr-1 transition-all" onclick="modifierLigneSQL(${row.id})">U</button>
+                            <button class="bg-red-600 hover:bg-red-700 text-white px-2.5 py-1 rounded transition-all" onclick="supprimerLigneSQL(${row.id})">D</button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (error) {
+                console.error("Erreur de rafraîchissement.");
+            }
+        }
+
+        async function modifierLigneSQL(id) {
+            const user = localStorage.getItem("username");
+            const payload = {
+                num_caso: document.getElementById(`db-num-${id}`).value,
+                parcelle: document.getElementById(`db-parcelle-${id}`).value,
+                section: document.getElementById(`db-section-${id}`).value,
+                commune: document.getElementById(`db-commune-${id}`).value,
+                date_debut: "Modifié en grille",
+                date_fin: "Modifié en grille",
+                requerant: document.getElementById(`db-req-${id}`).value
+            };
+            try {
+                const response = await fetch(`${API_DISTANTE_URL}/caso/${id}?current_user=${user}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (response.ok) {
+                    alert("Enregistrement CASO modifié avec succès.");
+                } else {
+                    const err = await response.json();
+                    alert("Action refusée : " + err.detail);
+                }
+                chargerDonneesBase();
+            } catch (error) {
+                alert("Erreur réseau.");
+            }
+        }
+
+        async function supprimerLigneSQL(id) {
+            const user = localStorage.getItem("username");
+            if(!confirm("Voulez-vous supprimer définitivement cet enregistrement ?")) return;
+            try {
+                const response = await fetch(`${API_DISTANTE_URL}/caso/${id}?current_user=${user}`, { method: 'DELETE' });
+                if (response.ok) {
+                    alert("Entrée supprimée.");
+                } else {
+                    const err = await response.json();
+                    alert("Action refusée : " + err.detail);
+                }
+                chargerDonneesBase();
+            } catch (error) {
+                alert("Erreur réseau.");
+            }
+        }
+    </script>
+</body>
+</html>
