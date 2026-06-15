@@ -1,17 +1,17 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
-from pydantic import BaseModel
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
+from typing import List
 import shutil
 import os
 from extraction import affiner_extraction
+
+router = APIRouter()
 
 # --- CONFIGURATION DB ---
 DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/caso_ocr_db"
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-router = APIRouter()
 
 def get_db():
     db = SessionLocal()
@@ -20,69 +20,83 @@ def get_db():
     finally:
         db.close()
 
-class LoginRequest(BaseModel):
-    username: str
-    password: str
-
-# --- ROUTES ---
-
-@router.post("/login")
-async def login(credentials: LoginRequest, db=Depends(get_db)):
-    query = text("SELECT username, role FROM users WHERE username = :user AND password_hash = :password")
-    user = db.execute(query, {"user": credentials.username, "password": credentials.password}).fetchone()
-    if not user:
-        raise HTTPException(status_code=401, detail="Identifiants incorrects.")
-    return {"username": user[0], "role": user[1]}
-
-@router.get("/caso/")
-def get_all_caso(db=Depends(get_db)):
-    result = db.execute(text("SELECT * FROM caso_data ORDER BY id DESC")).fetchall()
-    return [dict(row._mapping) for row in result]
-
-@router.post("/valider-caso/")
-async def valider_caso(
-    document_id: int = Form(...),
-    num_caso: str = Form(...),
-    parcelle: str = Form(...),
-    section: str = Form(...),
-    commune: str = Form(...),
-    date_debut: str = Form(...),
-    date_fin: str = Form(...),
-    requerant: str = Form(...),
+@router.post("/upload-multiple/")
+async def upload_multiple(
+    files: List[UploadFile] = File(...),
     current_user: str = Form(...),
-    db=Depends(get_db)
+    db: Session = Depends(get_db)
 ):
-    query = text("""
-        INSERT INTO caso_data (document_id, num_caso, parcelle, section, commune, date_debut, date_fin, requerant)
-        VALUES (:doc_id, :nc, :p, :s, :c, :dd, :df, :r)
-    """)
-    db.execute(query, {
-        "doc_id": document_id, "nc": num_caso, "p": parcelle, "s": section,
-        "c": commune, "dd": date_debut, "df": date_fin, "r": requerant
-    })
-    db.commit()
-    return {"message": "Fiche validée et intégrée avec succès"}
-
-@router.put("/caso/{id}")
-def update_caso(id: int, data: dict, current_user: str = Form(...), db=Depends(get_db)):
-    # Vérification du rôle admin
-    role = db.execute(text("SELECT role FROM users WHERE username = :u"), {"u": current_user}).scalar()
-    if role != 'admin':
-        raise HTTPException(status_code=401, detail="Droits insuffisants pour modifier.")
+    results = []
     
-    query = text("""
-        UPDATE caso_data SET num_caso=:nc, parcelle=:p, section=:s, commune=:c, requerant=:r WHERE id=:id
-    """)
-    db.execute(query, {**data, "id": id})
-    db.commit()
-    return {"message": "Mis à jour avec succès"}
+    for file in files:
+        temp_path = f"temp_{file.filename}"
+        try:
+            with open(temp_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            
+            data = affiner_extraction(temp_path)
+            
+            if "error" in data:
+                results.append({"filename": file.filename, "status": "error", "message": data["error"]})
+                continue
 
-@router.delete("/caso/{id}")
-def delete_caso(id: int, current_user: str, db=Depends(get_db)):
-    role = db.execute(text("SELECT role FROM users WHERE username = :u"), {"u": current_user}).scalar()
-    if role != 'admin':
-        raise HTTPException(status_code=401, detail="Droits insuffisants pour supprimer.")
+            query = text("""
+                INSERT INTO caso_data (
+                    num_caso, parcelle, section, commune, 
+                    requerant, date_debut, date_fin, utilisateur, statut
+                ) VALUES (:num_caso, :parcelle, :section, :commune, 
+                          :requerant, :date_debut, :date_fin, :utilisateur, 'en_attente')
+            """)
+            
+            db.execute(query, {
+                "num_caso": data.get("num_caso"),
+                "parcelle": data.get("parcelle"),
+                "section": data.get("section"),
+                "commune": data.get("commune"),
+                "requerant": data.get("requerant"),
+                "date_debut": data.get("date_debut"),
+                "date_fin": data.get("date_fin"),
+                "utilisateur": current_user
+            })
+            db.commit()
+            results.append({"filename": file.filename, "status": "saved"})
+            
+        except Exception as e:
+            db.rollback()
+            results.append({"filename": file.filename, "status": "error", "message": str(e)})
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+                
+    return {"message": "Traitement terminé", "details": results}
+
+@router.post("/valider-document/{caso_id}")
+async def valider_document(
+    caso_id: int, 
+    validateur: str = Form(...), 
+    db: Session = Depends(get_db)
+):
+    # 1. Récupération du document en attente
+    doc = db.execute(
+        text("SELECT num_caso FROM caso_data WHERE id = :id"), 
+        {"id": caso_id}
+    ).fetchone()
     
-    db.execute(text("DELETE FROM caso_data WHERE id = :id"), {"id": id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document introuvable.")
+
+    # 2. Vérification de doublon sur les documents déjà VALIDÉS
+    conflit = db.execute(text(
+        "SELECT COUNT(*) FROM caso_data WHERE num_caso = :num AND statut = 'valide'"
+    ), {"num": doc.num_caso}).scalar()
+    
+    if conflit > 0:
+        raise HTTPException(status_code=400, detail="Doublon détecté : ce cas est déjà validé.")
+    
+    # 3. Passage au statut validé
+    db.execute(text(
+        "UPDATE caso_data SET statut = 'valide', valide_par = :v WHERE id = :id"
+    ), {"v": validateur, "id": caso_id})
     db.commit()
-    return {"message": "Supprimé"}
+    
+    return {"status": "success", "message": f"Document {caso_id} validé par {validateur}."}
