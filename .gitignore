@@ -8,3 +8,4 @@ __pycache__/
 test.pdf
 test_api.py
 test_extraction.py
+.env
