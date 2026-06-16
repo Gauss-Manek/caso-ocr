@@ -3,3 +3,8 @@ __pycache__/
 .env
 *.db
 .vscode/
+
+# Fichiers de test exclus
+test.pdf
+test_api.py
+test_extraction.py
