@@ -3,80 +3,167 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Superviseur OCR Pro - Interface de Traitement</title>
+    <title>Superviseur OCR Pro - Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-50 text-slate-800 min-h-screen p-8">
+<body class="bg-slate-50 text-slate-800 min-h-screen">
 
-    <div class="max-w-4xl mx-auto bg-white p-8 rounded-xl border border-slate-200 shadow-sm">
-        <h1 class="text-2xl font-bold mb-6 text-slate-900">Upload de Documents CASO</h1>
-        
-        <div class="space-y-4">
-            <div>
-                <label class="block text-sm font-medium text-slate-700">Sélectionnez vos documents :</label>
-                <input type="file" id="fileInput" multiple 
-                       class="mt-2 block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
-            </div>
+    <div id="vueTableau" class="p-8">
+        <div class="max-w-7xl mx-auto">
+            <h1 class="text-2xl font-bold mb-6">Gestion des Dossiers CASO</h1>
             
-            <div>
-                <label class="block text-sm font-medium text-slate-700">Utilisateur actuel :</label>
-                <input type="text" id="userInput" value="admin" 
-                       class="mt-1 block w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500">
+            <div class="mb-6 flex gap-4">
+                <input type="text" id="searchInput" placeholder="Recherche (sensible ou non)..." onkeyup="appliquerFiltres()" class="w-full p-4 border rounded-xl shadow-sm">
+                <select id="filterStatut" onchange="appliquerFiltres()" class="p-4 border rounded-xl shadow-sm">
+                    <option value="tous">Tous les statuts</option>
+                    <option value="en_attente">À valider</option>
+                    <option value="valide">Validés</option>
+                </select>
+                <div class="relative">
+                    <button onclick="document.getElementById('exportMenu').classList.toggle('hidden')" class="bg-emerald-600 text-white px-6 py-4 rounded-xl font-bold hover:bg-emerald-700">Exporter ▾</button>
+                    <div id="exportMenu" class="hidden absolute right-0 mt-2 bg-white shadow-xl rounded-lg p-2 border">
+                        <button onclick="exporter('csv')" class="block w-full text-left px-4 py-2 hover:bg-slate-100">Format CSV</button>
+                        <button onclick="exporter('excel')" class="block w-full text-left px-4 py-2 hover:bg-slate-100">Format Excel (CSV)</button>
+                    </div>
+                </div>
             </div>
 
-            <button onclick="gererUpload()" 
-                    class="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition">
-                Envoyer les fichiers
-            </button>
+            <div class="bg-white rounded-xl shadow overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-slate-100 uppercase text-xs">
+                        <tr>
+                            <th class="p-4 cursor-pointer" onclick="trierTable('num_caso')">N° Caso ↕</th>
+                            <th class="p-4 cursor-pointer" onclick="trierTable('requerant')">Requérant ↕</th>
+                            <th class="p-4 cursor-pointer" onclick="trierTable('parcelle')">Parcelle ↕</th>
+                            <th class="p-4 cursor-pointer" onclick="trierTable('section')">Section ↕</th>
+                            <th class="p-4 cursor-pointer" onclick="trierTable('commune')">Commune ↕</th>
+                            <th class="p-4 cursor-pointer" onclick="trierTable('date_debut')">Dates ↕</th>
+                            <th class="p-4 cursor-pointer" onclick="trierTable('date_upload')">Upload ↕</th>
+                            <th class="p-4 cursor-pointer" onclick="filtrerParStatutClick()">Statut ↕</th>
+                            <th class="p-4">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
         </div>
+    </div>
 
-        <div id="status" class="mt-6 p-4 rounded-lg hidden"></div>
+    <div id="vueEdition" class="hidden grid grid-cols-2 gap-0 h-screen overflow-hidden">
+        <iframe id="pdfViewer" class="w-full h-full border-r bg-slate-100"></iframe>
+        <div class="p-8 bg-white overflow-y-auto">
+            <h1 class="text-2xl font-bold mb-6">Correction & Validation</h1>
+            <form id="validationForm" class="space-y-4">
+                <input type="hidden" id="currentCasoId" name="caso_id">
+                <input type="hidden" name="validateur" id="validateurInput">
+                <div id="fieldsContainer"></div>
+                <button type="submit" class="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700">Enregistrer</button>
+                <button type="button" onclick="retourTableau()" class="w-full text-slate-500 py-2 hover:underline">Retour</button>
+            </form>
+        </div>
     </div>
 
     <script>
-        const API_URL = "http://localhost:8000"; // Remplacez par votre IP réelle
+        const API_URL = "http://localhost:8000";
+        const SUFFIXE_CASO = "/ANUTTC/DG/DC/SC";
+        const champs = ["num_caso", "parcelle", "section", "commune", "requerant", "date_debut", "date_fin"];
+        let tousLesDocs = [];
+        let triAsc = true;
 
-        async function gererUpload() {
-            const fileInput = document.getElementById('fileInput');
-            const userInput = document.getElementById('userInput').value;
-            const statusDiv = document.getElementById('status');
+        function getToken() { return localStorage.getItem('token'); }
 
-            if (fileInput.files.length === 0) {
-                alert("Veuillez sélectionner au moins un fichier.");
-                return;
-            }
-
-            // Création du FormData pour le multipart/form-data
-            const formData = new FormData();
-            for (let i = 0; i < fileInput.files.length; i++) {
-                formData.append('files', fileInput.files[i]);
-            }
-            formData.append('current_user', userInput);
-
-            // Affichage état
-            statusDiv.classList.remove('hidden', 'bg-red-100', 'bg-green-100');
-            statusDiv.classList.add('bg-blue-50');
-            statusDiv.innerText = "Traitement en cours...";
-
-            try {
-                const response = await fetch(`${API_URL}/upload-multiple/`, {
-                    method: 'POST',
-                    body: formData // PAS de header 'Content-Type', le navigateur gère le boundary
-                });
-
-                const result = await response.json();
-
-                if (response.ok) {
-                    statusDiv.className = "mt-6 p-4 rounded-lg bg-green-100 text-green-800";
-                    statusDiv.innerText = "Succès ! " + JSON.stringify(result);
-                } else {
-                    throw new Error(result.detail || "Erreur lors de l'envoi");
-                }
-            } catch (error) {
-                statusDiv.className = "mt-6 p-4 rounded-lg bg-red-100 text-red-800";
-                statusDiv.innerText = "Erreur : " + error.message;
-            }
+        async function chargerDonnees() {
+            const res = await fetch(`${API_URL}/tous-les-documents/`, { headers: { 'Authorization': 'Bearer ' + getToken() }});
+            tousLesDocs = await res.json();
+            afficherTableau(tousLesDocs);
         }
+
+        function afficherTableau(data) {
+            document.getElementById('tableBody').innerHTML = data.map(doc => `
+                <tr class="border-b hover:bg-slate-50">
+                    <td class="p-4 font-bold">${doc.num_caso || ''}</td>
+                    <td class="p-4">${doc.requerant || ''}</td>
+                    <td class="p-4">${doc.parcelle || ''}</td>
+                    <td class="p-4">${doc.section || ''}</td>
+                    <td class="p-4">${doc.commune || ''}</td>
+                    <td class="p-4 text-xs">${doc.date_debut || ''} / ${doc.date_fin || ''}</td>
+                    <td class="p-4 text-xs">${doc.date_upload ? new Date(doc.date_upload).toLocaleDateString() : '-'}</td>
+                    <td class="p-4"><span class="cursor-pointer px-2 py-1 rounded text-[10px] ${doc.statut === 'valide' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}" onclick="filtrerStatutDirect('${doc.statut}')">${doc.statut}</span></td>
+                    <td class="p-4">${doc.statut === 'en_attente' ? `<button onclick="editerDoc(${doc.id})" class="text-blue-600 font-bold hover:underline">Corriger</button>` : '-'}</td>
+                </tr>
+            `).join('');
+        }
+
+        function appliquerFiltres() {
+            const texte = document.getElementById('searchInput').value.toLowerCase();
+            const statut = document.getElementById('filterStatut').value;
+            let data = tousLesDocs.filter(d => 
+                (statut === 'tous' || d.statut === statut) &&
+                (Object.values(d).some(val => String(val).toLowerCase().includes(texte)))
+            );
+            afficherTableau(data);
+        }
+
+        function filtrerStatutDirect(statut) {
+            document.getElementById('filterStatut').value = statut;
+            appliquerFiltres();
+        }
+
+        function trierTable(col) {
+            triAsc = !triAsc;
+            tousLesDocs.sort((a, b) => (String(a[col] || '').toLowerCase() > String(b[col] || '').toLowerCase() ? 1 : -1) * (triAsc ? 1 : -1));
+            afficherTableau(tousLesDocs);
+        }
+
+        function exporter(format) {
+            let csv = "\ufeffN° Caso,Requérant,Parcelle,Section,Commune,Date Debut,Date Fin,Statut\n";
+            tousLesDocs.forEach(d => {
+                csv += `"${d.num_caso}","${d.requerant}","${d.parcelle}","${d.section}","${d.commune}","${d.date_debut}","${d.date_fin}","${d.statut}"\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `export_caso.${format === 'excel' ? 'csv' : 'csv'}`;
+            link.click();
+            document.getElementById('exportMenu').classList.add('hidden');
+        }
+
+        function editerDoc(id) {
+            const doc = tousLesDocs.find(d => d.id === id);
+            document.getElementById('vueTableau').classList.add('hidden');
+            document.getElementById('vueEdition').classList.remove('hidden');
+            document.getElementById('pdfViewer').src = `${API_URL}/static/${doc.filename}`;
+            document.getElementById('currentCasoId').value = doc.id;
+            
+            const token = getToken();
+            const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+            document.getElementById('validateurInput').value = payload.sub || "Validateur";
+            
+            document.getElementById('fieldsContainer').innerHTML = champs.map(col => {
+                if (col === 'num_caso') {
+                    let val = (doc[col] || '').replace(SUFFIXE_CASO, '');
+                    return `<div class="mb-3"><label class="block text-xs font-bold uppercase">N° CASO</label><div class="flex"><input type="text" id="inputNumCaso" value="${val}" class="w-1/3 p-2 border rounded-l"><input type="text" value="${SUFFIXE_CASO}" readonly class="w-2/3 p-2 border bg-slate-100 rounded-r text-slate-500"></div></div>`;
+                }
+                return `<div class="mb-3"><label class="block text-xs font-bold uppercase">${col.replace('_', ' ')}</label><input type="text" name="${col}" value="${doc[col] || ''}" class="w-full p-2 border rounded shadow-sm"></div>`;
+            }).join('');
+        }
+
+        function retourTableau() {
+            document.getElementById('vueTableau').classList.remove('hidden');
+            document.getElementById('vueEdition').classList.add('hidden');
+        }
+
+        document.getElementById('validationForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            formData.set('num_caso', document.getElementById('inputNumCaso').value + SUFFIXE_CASO);
+            const res = await fetch(`${API_URL}/valider-document/${formData.get('caso_id')}`, { 
+                method: 'POST', headers: { 'Authorization': 'Bearer ' + getToken() }, body: formData 
+            });
+            if (res.ok) location.reload(); else alert("Erreur");
+        });
+
+        chargerDonnees();
     </script>
 </body>
 </html>
