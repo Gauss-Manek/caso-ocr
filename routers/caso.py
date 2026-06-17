@@ -6,12 +6,20 @@ import shutil
 import os
 from extraction import affiner_extraction
 
+# Nouveaux imports pour la sécurité
+from fastapi.security import OAuth2PasswordBearer
+from jose import jwt, JWTError
+from auth import SECRET_KEY, ALGORITHM, verify_password, create_access_token
+
 router = APIRouter()
 
 # --- CONFIGURATION DB ---
 DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/caso_ocr_db"
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Configuration du mécanisme d'authentification
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 
 def get_db():
     db = SessionLocal()
@@ -20,10 +28,34 @@ def get_db():
     finally:
         db.close()
 
+# Fonction de dépendance pour vérifier le token
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=401, detail="Token invalide")
+        return username
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token invalide")
+
+@router.post("/login")
+async def login(username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+    user = db.execute(
+        text("SELECT password_hash FROM users WHERE username = :u"), 
+        {"u": username}
+    ).fetchone()
+
+    if not user or not verify_password(password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Identifiants incorrects")
+
+    token = create_access_token(data={"sub": username})
+    return {"access_token": token, "token_type": "bearer"}
+
 @router.post("/upload-multiple/")
 async def upload_multiple(
     files: List[UploadFile] = File(...),
-    current_user: str = Form(...),
+    current_user: str = Depends(get_current_user), # Sécurisé par le token
     db: Session = Depends(get_db)
 ):
     results = []

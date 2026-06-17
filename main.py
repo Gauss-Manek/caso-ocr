@@ -5,7 +5,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import easyocr
-from routers import caso 
+from routers import caso
 
 app = FastAPI(
     title="CASO OCR API",
