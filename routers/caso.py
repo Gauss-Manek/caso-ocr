@@ -45,8 +45,9 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
 # --- UPLOAD MULTIPLE ---
 @router.post("/upload-multiple/")
 async def upload_multiple(files: List[UploadFile] = File(...), current_user: str = Depends(get_current_user), db: Session = Depends(get_db)):
-    BASE_DIR = Path(__file__).resolve().parent
+    BASE_DIR = Path(__file__).resolve().parent.parent
     UPLOAD_DIR = BASE_DIR / "uploads"
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     
     for file in files:
         file_path = UPLOAD_DIR / file.filename
@@ -60,23 +61,33 @@ async def upload_multiple(files: List[UploadFile] = File(...), current_user: str
         
         # OCR
         data = affiner_extraction(str(file_path))
+        
+        # Insertion dans caso_data
         db.execute(text("""
-            INSERT INTO caso_data (doc_id, num_caso, parcelle, section, commune, requerant, date_debut, date_fin, statut)
+            INSERT INTO caso_data (document_id, num_caso, parcelle, section, commune, requerant, date_debut, date_fin, statut)
             VALUES (:did, :nc, :p, :s, :c, :r, :dd, :df, 'en_attente')
-        """), {"did": doc_id, **data})
+        """), {
+            "did": doc_id,
+            "nc": data.get("num_caso"),
+            "p": data.get("parcelle"),
+            "s": data.get("section"),
+            "c": data.get("commune"),
+            "r": data.get("requerant"),
+            "dd": data.get("date_debut"),
+            "df": data.get("date_fin")
+        })
         db.commit()
-    
     return {"message": "Upload et OCR terminés"}
 
-# --- GET TOUS DOCUMENTS (MODIFIÉ) ---
+# --- GET TOUS DOCUMENTS ---
 @router.get("/tous-les-documents/")
 async def get_tous_documents(current_user: str = Depends(get_current_user), db: Session = Depends(get_db)):
-    # Requête mise à jour avec d.created_at
+    # Modifiez c.id en c.id AS id pour forcer le nom de la clé dans le JSON
     docs = db.execute(text("""
-        SELECT c.id, d.filename, c.num_caso, c.parcelle, c.section, c.commune, 
+        SELECT c.id AS id, d.filename, c.num_caso, c.parcelle, c.section, c.commune, 
                c.requerant, c.date_debut, c.date_fin, c.statut, d.created_at 
         FROM caso_data c 
-        JOIN documents d ON c.doc_id = d.id
+        JOIN documents d ON c.document_id = d.id
         ORDER BY d.created_at DESC
     """)).fetchall()
     
