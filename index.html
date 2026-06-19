@@ -9,12 +9,22 @@
 <body class="bg-slate-50 text-slate-800 min-h-screen">
 
     <datalist id="listeCommunes">
-        <option value="Owendo"><option value="Ntoum"><option value="Akanda"><option value="Kango"><option value="Franceville"><option value="Mouila"><option value="Lambaréné"><option value="Bitam"><option value="Oyem"><option value="Mitzic"><option value="Médouneu"><option value="Koulamoutou"><option value="Lastourville"><option value="Port Gentil"><option value="Omboué"><option value="Gamba"><option value="Makokou"><option value="Mékambo"><option value="Ovan"><option value="Booué"><option value="Moanda"><option value="Mounana"><option value="Bakoumba"><option value="Boumango"><option value="Bongoville"><option value="Léconi"><option value="Akiéni"><option value="Okondja"><option value="Ngouoni"><option value="Aboumi"><option value="Ndjolé"><option value="Fougamou"><option value="Ndende"><option value="Lebamba"><option value="Malinga"><option value="Mbigou"><option value="Mimongo"><option value="Mayumba"><option value="Ndindi"><option value="Moabi"><option value="Mabanda">
+        <option value="Owendo"><option value="Libreville"><option value="Ntoum"><option value="Akanda"><option value="Kango"><option value="Franceville"><option value="Mouila"><option value="Lambaréné"><option value="Bitam"><option value="Oyem"><option value="Mitzic"><option value="Médouneu"><option value="Koulamoutou"><option value="Lastourville"><option value="Port Gentil"><option value="Omboué"><option value="Gamba"><option value="Makokou"><option value="Mékambo"><option value="Ovan"><option value="Booué"><option value="Moanda"><option value="Mounana"><option value="Bakoumba"><option value="Boumango"><option value="Bongoville"><option value="Léconi"><option value="Akiéni"><option value="Okondja"><option value="Ngouoni"><option value="Aboumi"><option value="Ndjolé"><option value="Fougamou"><option value="Ndende"><option value="Lebamba"><option value="Malinga"><option value="Mbigou"><option value="Mimongo"><option value="Mayumba"><option value="Ndindi"><option value="Moabi"><option value="Mabanda">
     </datalist>
 
     <div id="vueTableau" class="p-8">
         <div class="max-w-7xl mx-auto">
-            <h1 class="text-2xl font-bold mb-6">Gestion des Dossiers CASO</h1>
+            
+            <div class="flex justify-between items-center mb-6">
+                <h1 class="text-2xl font-bold">Gestion des Dossiers CASO</h1>
+                <div class="flex items-center gap-4 bg-white p-2 px-4 rounded-lg border border-slate-200 shadow-sm">
+                    <div>
+                        <p id="userDisplay" class="text-sm font-bold"></p>
+                        <p id="roleDisplay" class="text-xs text-slate-500"></p>
+                    </div>
+                    <button onclick="deconnexion()" class="text-xs bg-red-50 text-red-600 px-3 py-1 rounded hover:bg-red-100 font-bold transition">Déconnexion</button>
+                </div>
+            </div>
             
             <div id="statsBar" class="grid grid-cols-3 gap-4 mb-6">
                 <div class="p-4 bg-white rounded-xl shadow-sm border border-slate-200">
@@ -40,20 +50,24 @@
                 <div id="uploadStatus" class="mt-2 text-sm font-bold text-blue-600 italic"></div>
             </form>
 
-            <div class="mb-6 flex gap-4">
+            <div class="mb-6">
                 <input type="text" id="searchInput" placeholder="Recherche rapide..." onkeyup="appliquerFiltres()" class="w-full p-4 border rounded-xl shadow-sm">
             </div>
 
             <div class="bg-white rounded-xl shadow overflow-x-auto">
-                <table class="w-full text-left text-sm">
+                <table class="w-full text-left text-xs">
                     <thead class="bg-slate-100 uppercase text-xs">
                         <tr>
-                            <th class="p-4">N° Caso</th>
-                            <th class="p-4">Requérant</th>
-                            <th class="p-4">Commune</th>
-                            <th class="p-4">Upload (Date/Heure)</th>
-                            <th class="p-4">Statut</th>
-                            <th class="p-4">Action</th>
+                            <th class="p-3">N° Caso</th>
+                            <th class="p-3">Requérant</th>
+                            <th class="p-3">Commune</th>
+                            <th class="p-3">Parcelle</th>
+                            <th class="p-3">Section</th>
+                            <th class="p-3">Date début</th>
+                            <th class="p-3">Date fin</th>
+                            <th class="p-3">Upload</th>
+                            <th class="p-3">Statut</th>
+                            <th class="p-3">Action</th>
                         </tr>
                     </thead>
                     <tbody id="tableBody"></tbody>
@@ -84,11 +98,31 @@
 
         function getToken() { return localStorage.getItem('token'); }
 
+        // Initialisation de la session
+        function initUserSession() {
+            const token = getToken();
+            if (!token) {
+                window.location.href = 'login.html';
+                return;
+            }
+            try {
+                const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+                document.getElementById('userDisplay').innerText = payload.sub;
+                document.getElementById('roleDisplay').innerText = payload.role || 'Utilisateur';
+            } catch (e) {
+                deconnexion();
+            }
+        }
+
+        function deconnexion() {
+            localStorage.removeItem('token');
+            window.location.href = 'login.html';
+        }
+
         function formaterDate(isoString) {
             if (!isoString) return "N/A";
             const date = new Date(isoString);
-            const pad = (n) => String(n).padStart(2, '0');
-            return `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+            return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
         }
 
         async function uploaderFichiers() {
@@ -108,7 +142,7 @@
                 });
                 if (res.ok) {
                     statusDiv.innerHTML = `Analyse terminée. <span class='cursor-pointer underline text-blue-800' onclick='chargerDonnees()'>Rafraîchir</span>`;
-                    fileInput.value = ''; // Réinitialisation ici
+                    fileInput.value = '';
                 } else { statusDiv.innerText = "Erreur."; }
             } catch(e) { statusDiv.innerText = "Erreur de connexion."; }
         }
@@ -125,12 +159,16 @@
         function afficherTableau(data) {
             document.getElementById('tableBody').innerHTML = data.map(doc => `
                 <tr class="border-b hover:bg-slate-50">
-                    <td class="p-4 font-bold">${doc.num_caso || ''}</td>
-                    <td class="p-4">${doc.requerant || ''}</td>
-                    <td class="p-4">${doc.commune || ''}</td>
-                    <td class="p-4 text-xs font-mono">${formaterDate(doc.created_at)}</td>
-                    <td class="p-4"><span class="px-2 py-1 rounded text-[10px] ${doc.statut === 'valide' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">${doc.statut}</span></td>
-                    <td class="p-4">${doc.statut === 'en_attente' ? `<button onclick="editerDoc(${doc.id})" class="text-blue-600 font-bold hover:underline">Corriger</button>` : '-'}</td>
+                    <td class="p-3 font-bold">${doc.num_caso || ''}</td>
+                    <td class="p-3">${doc.requerant || ''}</td>
+                    <td class="p-3">${doc.commune || ''}</td>
+                    <td class="p-3">${doc.parcelle || ''}</td>
+                    <td class="p-3">${doc.section || ''}</td>
+                    <td class="p-3">${doc.date_debut || ''}</td>
+                    <td class="p-3">${doc.date_fin || ''}</td>
+                    <td class="p-3 font-mono">${formaterDate(doc.created_at)}</td>
+                    <td class="p-3"><span class="px-2 py-1 rounded text-[10px] ${doc.statut === 'valide' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">${doc.statut}</span></td>
+                    <td class="p-3">${doc.statut === 'en_attente' ? `<button onclick="editerDoc(${doc.id})" class="text-blue-600 font-bold hover:underline">Corriger</button>` : '-'}</td>
                 </tr>
             `).join('');
         }
@@ -177,6 +215,8 @@
             afficherTableau(data);
         }
 
+        // Lancement initial
+        initUserSession();
         chargerDonnees();
     </script>
 </body>
