@@ -34,7 +34,7 @@ def affiner_extraction(file_path):
         "parcelle": r"de la parcelle n' (.*?) de la section",
         "section": r"de la section (.*?) du plan cadastral",
         "commune": r"du plan cadastral (.*?)(?:,|$)",
-        "requerant": r"formulée le .*? (.*?) ;",
+        "requerant": r"formulée le .*?(.*?);",
         "date_debut": r"a été affichée du (.*?) au",
         "date_fin": r"au (.*?) inclus,"
     }
