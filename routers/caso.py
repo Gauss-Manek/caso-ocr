@@ -10,6 +10,12 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import jwt, JWTError
 from auth import SECRET_KEY, ALGORITHM, verify_password, create_access_token
 
+##################
+def safe_truncate(text, length=100):
+    if text is None: return "Non trouvé"
+    return str(text)[:length]
+##################
+
 router = APIRouter()
 
 DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/caso_ocr_db"
@@ -72,13 +78,13 @@ async def upload_multiple(files: List[UploadFile] = File(...), current_user: str
             VALUES (:did, :nc, :p, :s, :c, :r, :dd, :df, :raw)
         """), {
             "did": doc_id,
-            "nc": extracted_data["num_caso"],
-            "p": extracted_data["parcelle"],
-            "s": extracted_data["section"],
-            "c": extracted_data["commune"],
-            "r": extracted_data["requerant"],
-            "dd": extracted_data["date_debut"],
-            "df": extracted_data["date_fin"],
+            "nc": safe_truncate(extracted_data["num_caso"]),
+            "p": safe_truncate(extracted_data["parcelle"]),
+            "s": safe_truncate(extracted_data["section"]),
+            "c": safe_truncate(extracted_data["commune"]),
+            "r": safe_truncate(extracted_data["requerant"]),
+            "dd": safe_truncate(extracted_data["date_debut"]),
+            "df": safe_truncate(extracted_data["date_fin"]),
             "raw": extracted_data["extraction_ocr"] # <--- ICI : on utilise la nouvelle clé
         })
         db.commit()

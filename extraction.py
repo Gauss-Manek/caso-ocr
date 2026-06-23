@@ -31,12 +31,12 @@ def affiner_extraction(file_path):
 
     # Définition des patterns
     patterns = {
-        "parcelle": r"de la parcelle n' (.*?) de la section",
+        "parcelle": r"de la parcelle (.*?),",
         "section": r"de la section (.*?) du plan cadastral",
         "commune": r"du plan cadastral (.*?)(?:,|$)",
-        "requerant": r"formulée le .*?(.*?);",
-        "date_debut": r"a été affichée du (.*?) au",
-        "date_fin": r"au (.*?) inclus,"
+        "requerant": r"formulée Le (.*?) a été affiché",
+        "date_debut": r"a été affiché du\s+(.*?)\s+au",
+        "date_fin": r"a été affiché (.*?)\s+inclus,",
     }
 
     # Initialisation du dictionnaire de résultats
