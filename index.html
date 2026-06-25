@@ -66,7 +66,7 @@
                         <p id="roleDisplay" class="text-xs text-slate-500"></p>
                     </div>
                     <button onclick="deconnexion()" class="text-xs bg-red-50 text-red-600 px-3 py-1 rounded hover:bg-red-100 font-bold transition">Déconnexion</button>
-                </div>
+<button id="btnGestionUsers" onclick="ouvrirVueUsers()" class="bg-slate-600 text-white px-3 py-1 rounded text-xs hover:bg-slate-700 transition">Gestion Users</button>                </div>
             </div>
             
             <div id="statsBar" class="grid grid-cols-3 gap-4 mb-6">
@@ -140,26 +140,70 @@
         </div>
     </div>
 
+    <div id="vueUsers" class="hidden p-8 max-w-7xl mx-auto">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-2xl font-bold">Gestion des Utilisateurs</h1>
+            <button onclick="retourTableau()" class="text-slate-500">Retour au Dashboard</button>
+        </div>
+
+            <div class="mb-6 p-4 bg-slate-100 rounded-xl">
+                <h2 class="font-bold mb-2">Ajouter un utilisateur</h2>
+                <form id="formAjoutUser" class="flex gap-2">
+                    <input type="text" name="username" placeholder="Username" required class="p-2 border rounded">
+                    <input type="password" name="password" placeholder="Mot de passe" required class="p-2 border rounded">
+                    <select name="role" class="p-2 border rounded">
+                        <option value="correcteur">Correcteur</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                    <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded">Créer</button>
+                </form>
+            </div>
+
+            <table class="w-full text-left">
+                <thead>
+                    <tr>
+                        <th class="p-3">Username</th>
+                        <th class="p-3">Rôle</th>
+                        <th class="p-3">Statut</th>
+                        <th class="p-3">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="usersTableBody"></tbody>
+            </table>
+    </div>
+</div>
+
     <script>
         const API_URL = "http://localhost:8000";
-        const SUFFIXE_CASO = "/ANUTTC/DG/DC/SC";
-        const champs = ["num_caso", "parcelle", "section", "commune", "requerant", "date_debut", "date_fin"];
-        let tousLesDocs = [];
-        let triAsc = true;
+    const SUFFIXE_CASO = "/ANUTTC/DG/DC/SC";
+    const champs = ["num_caso", "parcelle", "section", "commune", "requerant", "date_debut", "date_fin"];
+    let tousLesDocs = [];
+    let triAsc = true;
+    let userRole = ""; // Variable globale pour stocker le rôle
 
-        function getToken() { return localStorage.getItem('token'); }
+    function getToken() { return localStorage.getItem('token'); }
 
-        function initUserSession() {
-            const token = getToken();
-            if (!token) { window.location.href = 'login.html'; return; }
-            try {
-                const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-                document.getElementById('userDisplay').innerText = payload.sub;
-                document.getElementById('roleDisplay').innerText = payload.role || 'Utilisateur';
-            } catch (e) { deconnexion(); }
-        }
+    // FONCTION UNIQUE ET FUSIONNÉE
+    function initUserSession() {
+        const token = getToken();
+        if (!token) { window.location.href = 'login.html'; return; }
+        try {
+            const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+            
+            // Stockage des informations
+            document.getElementById('userDisplay').innerText = payload.sub;
+            userRole = payload.role || 'Utilisateur'; // On remplit la variable globale
+            document.getElementById('roleDisplay').innerText = userRole;
 
-        function deconnexion() { localStorage.removeItem('token'); window.location.href = 'login.html'; }
+            // Gestion de l'affichage des éléments admin
+            const adminSection = document.getElementById('adminSection');
+            if (userRole !== 'Administrateur' && adminSection) {
+                adminSection.classList.add('hidden');
+            }
+        } catch (e) { deconnexion(); }
+    }
+
+    function deconnexion() { localStorage.removeItem('token'); window.location.href = 'login.html'; }
 
         function formaterDateTime(isoString) {
             if (!isoString) return "N/A";
@@ -189,21 +233,28 @@
         }
 
         function afficherTableau(data) {
-            document.getElementById('tableBody').innerHTML = data.map(doc => `
-                <tr class="border-b hover:bg-slate-50">
-                    <td class="p-3 font-bold">${doc.num_caso || ''}</td>
-                    <td class="p-3">${doc.requerant || ''}</td>
-                    <td class="p-3">${doc.commune || ''}</td>
-                    <td class="p-3">${doc.parcelle || ''}</td>
-                    <td class="p-3">${doc.section || ''}</td>
-                    <td class="p-3">${doc.date_debut || ''}</td>
-                    <td class="p-3">${doc.date_fin || ''}</td>
-                    <td class="p-3 font-mono">${formaterDateTime(doc.created_at)}</td>
-                    <td class="p-3"><span class="px-2 py-1 rounded text-[10px] ${doc.statut === 'valide' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">${doc.statut}</span></td>
-                    <td class="p-3">${doc.statut === 'en_attente' ? `<button onclick="editerDoc(${doc.id})" class="text-blue-600 font-bold hover:underline">Corriger</button>` : '-'}</td>
-                </tr>
-            `).join('');
-        }
+        document.getElementById('tableBody').innerHTML = data.map(doc => `
+            <tr class="border-b hover:bg-slate-50">
+                <td class="p-3 font-bold">${doc.num_caso || ''}</td>
+                <td class="p-3">${doc.requerant || ''}</td>
+                <td class="p-3">${doc.commune || ''}</td>
+                <td class="p-3">${doc.parcelle || ''}</td>
+                <td class="p-3">${doc.section || ''}</td>
+                <td class="p-3">${doc.date_debut || ''}</td>
+                <td class="p-3">${doc.date_fin || ''}</td>
+                <td class="p-3 font-mono">${formaterDateTime(doc.created_at)}</td>
+                <td class="p-3"><span class="px-2 py-1 rounded text-[10px] ${doc.statut === 'valide' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">${doc.statut}</span></td>
+                <td class="p-3">
+                    ${doc.statut === 'en_attente' 
+                        ? `<button onclick="editerDoc(${doc.id})" class="text-blue-600 font-bold hover:underline">Corriger</button>` 
+                        : (userRole === 'Administrateur' 
+                            ? `<button onclick="editerDoc(${doc.id})" class="text-red-600 font-bold hover:underline">Modifier (Admin)</button>` 
+                            : '<span class="text-gray-400">Validé</span>')
+                    }
+                </td>
+            </tr>
+        `).join('');
+    }
 
         function trierPar(col) {
             triAsc = !triAsc;
@@ -242,6 +293,7 @@
         function editerDoc(id) {
     // 1. Recherche du document dans la liste locale
     const doc = tousLesDocs.find(d => d.id === id);
+    if (!doc) return;
     
     // 2. Basculement de l'affichage entre le tableau et l'éditeur
     document.getElementById('vueTableau').classList.add('hidden');
@@ -252,44 +304,51 @@
     
     // 4. Mise à jour des identifiants et données cachées
     document.getElementById('currentCasoId').value = doc.id;
-    
-    // CORRECTION APPLIQUÉE ICI : Utilisation de extraction_ocr
-    document.getElementById('extractionOcrInput').value = doc.extraction_ocr;
+    document.getElementById('extractionOcrInput').value = doc.extraction_ocr || '';
     
     // 5. Gestion du validateur via le token JWT
-    const token = getToken();
-    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-    document.getElementById('validateurInput').value = payload.sub;
+    try {
+        const token = getToken();
+        const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+        document.getElementById('validateurInput').value = payload.sub;
+    } catch (e) {
+        console.error("Erreur de décodage du token", e);
+    }
     
     // 6. Génération dynamique des champs du formulaire
+    // Assurez-vous que le tableau 'champs' contient bien les clés correspondantes
     document.getElementById('fieldsContainer').innerHTML = champs.map(col => {
     
-    // 1. Gestion du N° CASO (déjà existante)
-    if (col === 'num_caso') {
-        let val = (doc[col] || '').replace(SUFFIXE_CASO, '');
-        return `<div class="mb-3">
-                    <label class="block text-xs font-bold uppercase">N° CASO</label>
-                    <div class="flex">
-                        <input type="text" id="inputNumCaso" value="${val}" class="w-1/3 p-2 border rounded-l">
-                        <input type="text" value="${SUFFIXE_CASO}" readonly class="w-2/3 p-2 border bg-slate-100 rounded-r text-slate-500">
-                    </div>
-                </div>`;
-    }
+        // A. Gestion du N° CASO (Correction : ajout de name="num_caso")
+        if (col === 'num_caso') {
+            let val = (doc[col] || '').replace(SUFFIXE_CASO, '');
+            return `<div class="mb-3">
+                        <label class="block text-xs font-bold uppercase">N° CASO</label>
+                        <div class="flex">
+                            <input type="text" id="inputNumCaso" name="num_caso" value="${val}" class="w-1/3 p-2 border rounded-l">
+                            <input type="text" value="${SUFFIXE_CASO}" readonly class="w-2/3 p-2 border bg-slate-100 rounded-r text-slate-500">
+                        </div>
+                    </div>`;
+        }
 
-    // 2. NOUVELLE CONDITION : Gestion de la commune avec datalist
-    if (col === 'commune') {
-        return `<div class="mb-3">
-                    <label class="block text-xs font-bold uppercase">Commune</label>
-                    <input type="text" name="commune" value="${doc.commune || ''}" list="listeCommunes" class="w-full p-2 border rounded shadow-sm" autocomplete="off">
-                </div>`;
-    }
+        // B. Gestion de la commune (avec datalist)
+        if (col === 'commune') {
+            return `<div class="mb-3">
+                        <label class="block text-xs font-bold uppercase">Commune</label>
+                        <input type="text" name="commune" value="${doc.commune || ''}" list="listeCommunes" class="w-full p-2 border rounded shadow-sm" autocomplete="off">
+                    </div>`;
+        }
 
-    // 3. Gestion des autres champs (requerant, section, etc.)
-    return `<div class="mb-3">
-                <label class="block text-xs font-bold uppercase">${col.replace('_', ' ')}</label>
-                <input type="text" name="${col}" value="${doc[col] || ''}" class="w-full p-2 border rounded shadow-sm">
-            </div>`;
-}).join('');
+        // C. Gestion des autres champs (requerant, section, parcelle, etc.)
+        // Note : On ignore 'id', 'filename', 'created_at', 'statut' et 'extraction_ocr' s'ils sont dans 'champs'
+        const excluded = ['id', 'filename', 'created_at', 'statut', 'extraction_ocr'];
+        if (excluded.includes(col)) return '';
+
+        return `<div class="mb-3">
+                    <label class="block text-xs font-bold uppercase">${col.replace('_', ' ')}</label>
+                    <input type="text" name="${col}" value="${doc[col] || ''}" class="w-full p-2 border rounded shadow-sm">
+                </div>`;
+    }).join('');
 }
 
         function retourTableau() {
@@ -300,9 +359,106 @@
         document.getElementById('validationForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
+
+            for (var pair of formData.entries()) {
+            console.log(pair[0]+ ', ' + pair[1]); 
+            }
+
             formData.set('num_caso', document.getElementById('inputNumCaso').value + SUFFIXE_CASO);
             const res = await fetch(`${API_URL}/valider-document/${formData.get('caso_id')}`, { method: 'POST', headers: { 'Authorization': 'Bearer ' + getToken() }, body: formData });
             if (res.ok) { retourTableau(); await chargerDonnees(); } else alert("Erreur validation");
+        });
+
+                // Afficher la vue utilisateurs
+        function ouvrirVueUsers() {
+            document.getElementById('vueTableau').classList.add('hidden');
+            document.getElementById('vueEdition').classList.add('hidden');
+            document.getElementById('vueUsers').classList.remove('hidden');
+            chargerUsers();
+        }
+
+        async function chargerUsers() {
+        const res = await fetch(`${API_URL}/users/`, { 
+            headers: { 'Authorization': 'Bearer ' + getToken() } 
+        });
+        const users = await res.json();
+        
+        const tbody = document.getElementById('usersTableBody');
+        tbody.innerHTML = users.map(u => `
+            <tr class="border-b">
+                <td class="p-3">${u.username}</td>
+                <td class="p-3">${u.role}</td>
+                <td class="p-3">${u.is_active ? 'Actif' : 'Inactif'}</td>
+                <td class="p-3">
+                    <button onclick="preparerModification(${u.id}, '${u.username}')" class="text-blue-600 font-bold mr-2 hover:underline">Modifier</button>
+                    <button onclick="supprimerUser(${u.id})" class="text-red-600 font-bold hover:underline">Supprimer</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+            function preparerModification(id, oldUsername) {
+            const newUsername = prompt("Nouveau username :", oldUsername);
+            if (newUsername === null) return; // Annulation
+            
+            const newPassword = prompt("Nouveau mot de passe (laisser vide pour ne pas changer) :");
+            
+            // Appel de la fonction de mise à jour
+            modifierUser(id, newUsername, newPassword);
+        }
+
+        async function modifierUser(id, newUsername, newPassword) {
+            const payload = { username: newUsername };
+            if (newPassword) payload.password = newPassword;
+            
+            const res = await fetch(`${API_URL}/users/${id}`, {
+                method: 'PUT',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + getToken() 
+                },
+                body: JSON.stringify(payload)
+            });
+            
+            if (res.ok) {
+                chargerUsers(); // Rafraîchir la liste
+            } else {
+                alert("Erreur lors de la modification.");
+            }
+        }
+
+        async function supprimerUser(id) {
+    if (!confirm("Voulez-vous vraiment supprimer cet utilisateur ?")) return;
+    
+    const res = await fetch(`${API_URL}/users/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    
+    if (res.ok) {
+        chargerUsers(); // Rafraîchir la liste
+    } else {
+        alert("Erreur lors de la suppression.");
+    }
+}
+
+
+        document.getElementById('formAjoutUser').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            
+            const res = await fetch(`${API_URL}/users/`, {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + getToken() },
+                body: formData
+            });
+            
+            if (res.ok) {
+                e.target.reset();
+                chargerUsers();
+            } else {
+                alert("Erreur lors de la création.");
+            }
         });
 
         initUserSession();
