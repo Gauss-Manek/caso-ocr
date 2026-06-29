@@ -9,3 +9,6 @@ test.pdf
 test_api.py
 test_extraction.py
 .env
+
+uploads/
+*.pdf

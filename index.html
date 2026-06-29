@@ -185,23 +185,29 @@
 
     // FONCTION UNIQUE ET FUSIONNÉE
     function initUserSession() {
-        const token = getToken();
-        if (!token) { window.location.href = 'login.html'; return; }
-        try {
-            const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-            
-            // Stockage des informations
-            document.getElementById('userDisplay').innerText = payload.sub;
-            userRole = payload.role || 'Utilisateur'; // On remplit la variable globale
-            document.getElementById('roleDisplay').innerText = userRole;
+    const token = getToken();
+    if (!token) { window.location.href = 'login.html'; return; }
+    try {
+        const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+        
+        document.getElementById('userDisplay').innerText = payload.sub;
+        userRole = payload.role || 'Utilisateur';
+        document.getElementById('roleDisplay').innerText = userRole;
 
-            // Gestion de l'affichage des éléments admin
-            const adminSection = document.getElementById('adminSection');
-            if (userRole !== 'Administrateur' && adminSection) {
-                adminSection.classList.add('hidden');
-            }
-        } catch (e) { deconnexion(); }
-    }
+        // --- MODIFICATION : Gestion de la visibilité du bouton ---
+        const btnUsers = document.getElementById('btnGestionUsers');
+        
+        // On normalise le rôle en minuscules et on vérifie s'il contient 'admin'
+        // Cela couvre 'admin', 'Admin', 'ADMIN' ou 'administrateur'
+        if (userRole.toLowerCase().includes('admin')) {
+            btnUsers.classList.remove('hidden');
+        } else {
+            btnUsers.classList.add('hidden');
+        }
+        // --------------------------------------------------------
+
+    } catch (e) { deconnexion(); }
+}
 
     function deconnexion() { localStorage.removeItem('token'); window.location.href = 'login.html'; }
 
